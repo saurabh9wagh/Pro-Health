@@ -60,6 +60,24 @@ const test = base.test.extend({
   },
 
   page: async ({ page }, use) => {
+    // The Coloplast cookie banner (.cookie-toast) re-appears on every navigation
+    // and overlays the bottom of the page, intercepting pointer events on
+    // controls like the role multiselect. Neutralise it deterministically on
+    // every document load instead of racing to click "Got it".
+    await page.addInitScript(() => {
+      const inject = () => {
+        if (document.getElementById('__pw_hide_cookie_toast')) return;
+        const style = document.createElement('style');
+        style.id = '__pw_hide_cookie_toast';
+        style.textContent = '.cookie-toast{display:none !important;pointer-events:none !important;}';
+        (document.head || document.documentElement).appendChild(style);
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', inject);
+      } else {
+        inject();
+      }
+    });
     await use(page);
   },
 

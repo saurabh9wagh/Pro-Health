@@ -15,12 +15,16 @@ const desktopChrome = (function () {
 
 module.exports = defineConfig({
   testDir: './tests',
-  timeout: 60_000,
+  // The shared test server can be slow; allow headroom so navigations/actions
+  // don't fail purely on latency.
+  timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
-  workers: 2,
+  // Locally use a single worker so only ONE browser window opens at a time
+  // (parallel workers each launch their own browser). CI can parallelise.
+  workers: process.env.CI ? 2 : 1,
 
   reporter: [
     ['list'],
@@ -50,7 +54,7 @@ module.exports = defineConfig({
       args: ['--start-maximized'],
     },
     actionTimeout: 15_000,
-    navigationTimeout: 60_000,
+    navigationTimeout: 90_000,
   },
 
   projects: [

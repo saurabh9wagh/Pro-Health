@@ -149,7 +149,7 @@ class BasePage {
         '[class*="cookie"] button[class*="accept"], ' +
         '[class*="consent"] button[class*="accept"]'
       ).first();
-      await banner.waitFor({ state: 'visible', timeout: 4_000 });
+      await banner.waitFor({ state: 'visible', timeout: 1_500 });
       await banner.click();
       this.logger.info('Cookie banner dismissed');
     } catch {
