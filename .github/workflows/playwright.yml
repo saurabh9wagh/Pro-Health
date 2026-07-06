@@ -78,13 +78,17 @@ jobs:
           path: reports/html-report/
           retention-days: 14
 
-      - name: Upload Allure results
+      # Raw Allure JSON results are only an intermediate artifact, needed by
+      # the publish-allure job below to build the final aggregated HTML
+      # report. Short retention on purpose — do not treat these as a
+      # long-lived deliverable.
+      - name: Upload Allure results (raw, short-lived)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-results-${{ matrix.project }}
           path: reports/allure-results/
-          retention-days: 14
+          retention-days: 3
 
       - name: Upload traces / videos / screenshots
         if: failure()
@@ -107,6 +111,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Download all allure-results artifacts
         uses: actions/download-artifact@v4
@@ -115,13 +123,25 @@ jobs:
           pattern: allure-results-*
           merge-multiple: true
 
-      - name: Install Allure CLI
-        run: npm install -g allure-commandline
+      # Restore the previous run's report history so trend/retry graphs
+      # carry across CI runs, same as the local workflow does.
+      - name: Restore previous Allure report history
+        uses: actions/cache@v4
+        with:
+          path: reports/allure-report/history
+          key: allure-history-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            allure-history-${{ github.ref_name }}-
 
-      - name: Generate Allure HTML report
-        run: allure generate reports/allure-results-merged -o reports/allure-report --clean
+      # Runs the same generate -> open(skipped) -> delete-raw-results
+      # pipeline used locally, so CI and local behaviour stay identical.
+      - name: Generate Allure HTML report (and clean up raw results)
+        run: >
+          node scripts/run-with-allure.js --report-only
+          --results-dir=reports/allure-results-merged
+          --report-dir=reports/allure-report
 
-      - name: Upload aggregated Allure report
+      - name: Upload aggregated Allure report (final artifact — keep long-term)
         uses: actions/upload-artifact@v4
         with:
           name: allure-report-aggregated

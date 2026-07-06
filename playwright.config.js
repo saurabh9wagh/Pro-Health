@@ -68,14 +68,27 @@ module.exports = defineConfig({
     ['json', { outputFile: 'reports/test-results.json' }],
     ['allure-playwright', {
       detail: true,
-      outputFolder: 'reports/allure-results',
+      // NOTE: allure-playwright v3 reads `resultsDir`, not `outputFolder`.
+      // The old `outputFolder` key was silently ignored, so results were
+      // always written to the default ./allure-results at the repo root
+      // instead of here — that stray folder is what accumulated hundreds
+      // of stale JSON files. `resultsDir` is the fix.
+      resultsDir: 'reports/allure-results',
       suiteTitle: false,
       environmentInfo: {
         framework: 'Playwright',
         node: process.version,
         platform: process.platform,
         environment: process.env.ENVIRONMENT || 'test',
+        baseUrl: process.env.BASE_URL || 'https://coloplast-prohealth-test.bbsystemstest.com',
+        headless: String(isHeadless),
       },
+      categories: [
+        { name: 'Assertion failures', matchedStatuses: ['failed'], messageRegex: '.*Error: expect.*' },
+        { name: 'Timeouts', matchedStatuses: ['failed', 'broken'], messageRegex: '.*(Timeout|timed out).*' },
+        { name: 'Test defects (broken)', matchedStatuses: ['broken'] },
+        { name: 'Skipped tests', matchedStatuses: ['skipped'] },
+      ],
     }],
   ],
 

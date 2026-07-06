@@ -5,13 +5,6 @@ const { DashboardPage }      = require('../pages/dashboard.page');
 const { UsersPage }          = require('../pages/users.page');
 const { DacsPage }           = require('../pages/dacs.page');
 const { PharmaciesPage }     = require('../pages/pharmacies.page');
-const { AccountsPage }       = require('../pages/accounts.page');
-const { EmailTemplatesPage } = require('../pages/emailTemplates.page');
-const { OrganizationsPage }  = require('../pages/organizations.page');
-const { SystemConfigPage }   = require('../pages/systemConfig.page');
-const { RolePermissionsPage }= require('../pages/rolePermissions.page');
-const { LoginAuditPage }     = require('../pages/loginAudit.page');
-const { DataAuditPage }      = require('../pages/dataAudit.page');
 const { EditUserPage }       = require('../pages/editUser.page');
 const config = require('../config/env.config');
 const logger = require('../utils/logger');
@@ -127,34 +120,6 @@ const test = base.test.extend({
 
   pharmaciesPage: async ({ page }, use) => {
     await use(new PharmaciesPage(page));
-  },
-
-  accountsPage: async ({ page }, use) => {
-    await use(new AccountsPage(page));
-  },
-
-  emailTemplatesPage: async ({ page }, use) => {
-    await use(new EmailTemplatesPage(page));
-  },
-
-  organizationsPage: async ({ page }, use) => {
-    await use(new OrganizationsPage(page));
-  },
-
-  systemConfigPage: async ({ page }, use) => {
-    await use(new SystemConfigPage(page));
-  },
-
-  rolePermissionsPage: async ({ page }, use) => {
-    await use(new RolePermissionsPage(page));
-  },
-
-  loginAuditPage: async ({ page }, use) => {
-    await use(new LoginAuditPage(page));
-  },
-
-  dataAuditPage: async ({ page }, use) => {
-    await use(new DataAuditPage(page));
   },
 
   editUserPage: async ({ page }, use) => {
