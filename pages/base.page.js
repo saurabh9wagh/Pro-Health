@@ -176,7 +176,9 @@ class BasePage {
    * Uses domcontentloaded + a short settling delay.
    */
   async waitForAngular() {
-    await this.page.waitForLoadState('domcontentloaded');
+    // Cap the load-state wait so a slow SPA/server can't consume the entire test
+    // timeout; callers already establish readiness via visible-element waits.
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
     await this.page.waitForTimeout(300);
   }
 
