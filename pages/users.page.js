@@ -74,19 +74,23 @@ class UsersPage extends BasePage {
     // No skeleton loader exists in the live app (kept for backward-compat refs).
     this.skeletonLoader = page.locator('p-skeleton, [class*="skeleton"]');
 
-    // Column headers (visible custom-list header cells)
-    const headCell = (re) => page.locator('.bbl-list__head .bbl-list__cell').filter({ hasText: re });
-    this.colUser      = headCell(/user/i);
-    this.colRole      = headCell(/role/i);
-    this.colAccount   = headCell(/account/i);
-    this.colPrescCaps = headCell(/prescription/i);
-    this.colLastLogin = headCell(/last\s*log/i);
-    this.colStatus    = headCell(/status/i);
-    this.colActions   = page.locator('.bbl-list__head .bbl-list__cell--actions');
-    // Backward-compat aliases (there is no separate Full Name / Email column;
-    // name + email both live in the "User" column).
+   
+    // Column headers — the visible custom bbl-list header cells. `.first()` keeps
+    // each locator to a single element for toBeVisible().
+    // `hasText` takes a string/RegExp (NOT a Locator) and matches case-insensitive
+    // substrings, so these tolerate the app's real header casing/wording.
+    const headCell = (re) => page.locator('.bbl-list__head .bbl-list__cell').filter({ hasText: re }).first();
+
+    this.colUser      = headCell(/User/i);
+    this.colRole      = headCell(/Role/i);
+    this.colAccount   = headCell(/Account/i);
+    this.colPrescCaps = headCell(/Prescription Cap/i);
+    this.colLastLogin = headCell(/Last Log/i);
+    this.colStatus    = headCell(/Status/i);
+    this.colActions   = headCell(/Action/i);
+
+    // Backward-compat aliases.
     this.colFullName  = this.colUser;
-    this.colEmail     = this.colUser;
     this.colAccounts  = this.colAccount;
 
     // Row cell content
@@ -102,7 +106,11 @@ class UsersPage extends BasePage {
     this.filterPrescCaps = this.filterBtn;
 
     // ── Invite slide panel ────────────────────────────────────────────────────
-    this.panel      = page.locator('.bsp-panel');
+    // Track the panel via the `--open` modifier, not the base `.bsp-panel`: the
+    // base <aside> stays in the DOM (slid off-screen) after close, so Playwright
+    // still counts it visible and `not.toBeVisible()` never passes. `--open` is
+    // present only while the panel is actually open.
+    this.panel      = page.locator('.bsp-panel--open');
     this.panelBadge = page.locator('.bsp-panel__badge');
     this.panelTitle = page.locator('.bsp-panel__title');
 
@@ -139,10 +147,17 @@ class UsersPage extends BasePage {
     this.cancelConfirmBtn = page.locator('.p-confirm-dialog-reject');
 
     // ── Toast ──────────────────────────────────────────────────────────────────
-    this.toast        = page.locator('p-toast');
-    this.toastMessage = page.locator('p-toast .p-toast-detail, p-toast .p-toast-summary').first();
+    // Point at the inner .p-toast-message, not the <p-toast> host: the host is a
+    // zero-box Angular component wrapper Playwright always reports as hidden, so
+    // toBeVisible() on it fails even when a toast is showing.
+    this.toast        = page.locator('.p-toast-message');
+    this.toastMessage = page.locator('.p-toast-message .p-toast-detail, .p-toast-message .p-toast-summary').first();
 
     // ── Edit page / password reset (full-page route /app/users/edit/{uuid}) ─────
+    // The Edit view is a full PAGE with its own footer buttons (Password reset /
+    // Suspend / Delete / Cancel / Save) — NOT the Invite slide panel. Its Save is
+    // a plain button, so use a dedicated locator (saveBtn targets the panel button).
+    this.editSaveBtn = page.getByRole('button', { name: 'Save', exact: true });
     this.emailWarningTooltip = page.locator('[class*="tooltip"], .p-tooltip, [role="tooltip"]').first();
     this.passwordResetBtn = page.locator('button').filter({ hasText: /password reset|reset password|send.*reset/i }).first();
     this.resetConfirmDialog = page.locator('.p-dialog, .bsp-panel, [class*="confirm"]').filter({ hasText: /reset/i }).first();
@@ -167,10 +182,16 @@ class UsersPage extends BasePage {
     // established below by waiting for the list / empty-state to become visible.
     await this.navigate('/app/users', { waitUntil: 'commit' });
     await this.dismissCookieBanner();
+    // The grid can persist in CARD view from a previous session; the spec asserts
+    // the list/table (column headers, rows), so force List view before continuing.
+    await this.ensureListView();
     // The list view is the custom bbl-list component. It renders once data loads;
     // when there are 0 rows it is removed and an empty-state node shows instead.
     // Wait for whichever appears so we never block on the hidden PrimeNG <table>.
     await Promise.race([
+      // Toolbar hydrated — the Invite button is what beforeEach clicks next, so
+      // treat its presence as "page is interactive".
+      this.newUserBtn.waitFor({ state: 'visible', timeout: 30_000 }),
       this.tableRows.first().waitFor({ state: 'visible', timeout: 30_000 }),
       this.emptyMessage.waitFor({ state: 'visible', timeout: 30_000 }),
       this.list.waitFor({ state: 'visible', timeout: 30_000 }),
@@ -178,11 +199,33 @@ class UsersPage extends BasePage {
     await this.waitForAngular();
   }
 
+  /**
+   * Ensure the grid is in List view (not Card view). No-op if already in list
+   * view or if the toggle is not present.
+   */
+  async ensureListView() {
+    const btn = this.listViewBtn;
+    await btn.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    if (!(await btn.count().catch(() => 0))) return;
+    const cls = (await btn.getAttribute('class').catch(() => '')) || '';
+    if (!cls.includes('bbl-page__view-btn--active')) {
+      await btn.click().catch(() => {});
+      await this.list.first().waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Toolbar
   // ---------------------------------------------------------------------------
 
-  async clickNewUser()    { await this.click(this.newUserBtn); await this.waitForElement(this.panel); }
+  async clickNewUser() {
+    // The toolbar renders only after the Angular shell hydrates; on the slow test
+    // server this can exceed click()'s default 10s timeout. Wait for the Invite
+    // button explicitly (it IS the element we click) before proceeding.
+    await this.newUserBtn.waitFor({ state: 'visible', timeout: 30_000 });
+    await this.click(this.newUserBtn);
+    await this.waitForElement(this.panel);
+  }
   async clickInviteUser() { return this.clickNewUser(); }
   async clickExport()     { await this.click(this.exportBtn); }
   async search(text)      { await this.fill(this.searchInput, text); await this.waitForAngular(); }
@@ -311,6 +354,8 @@ class UsersPage extends BasePage {
   // ---------------------------------------------------------------------------
 
   async clickSave()   { await this.click(this.saveBtn); }
+  // Save on the full-page Edit view (distinct from the Invite panel's Save).
+  async clickEditSave() { await this.click(this.editSaveBtn); }
   async clickCancel() { await this.click(this.cancelBtn); }
   async isPanelOpen()    { return this.panel.isVisible(); }
   async isSaveDisabled() { return !(await this.saveBtn.isEnabled()); }
@@ -328,13 +373,13 @@ class UsersPage extends BasePage {
 
   async clickPasswordReset()   { await this.click(this.passwordResetBtn); }
   async confirmPasswordReset() {
-    // Wait for the confirmation dialog to render before accepting (avoids a race
-    // where the accept button is clicked before the dialog is interactive).
-    await this.page.locator('.p-confirm-dialog, .p-dialog, [class*="confirm"]')
-      .first().waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
-    const confirm = this.page.locator('.p-confirm-dialog-accept, .p-dialog button, button')
-      .filter({ hasText: /confirm|send|reset|yes/i }).first();
-    await this.click(confirm);
+    // The confirm is a "Confirm Action" dialog with Yes / No buttons. Scope the
+    // accept click to the dialog: an unscoped `button` match picks the background
+    // "Password reset" trigger (it contains "reset"), which the dialog mask blocks.
+    const dialog = this.page.locator('.p-dialog, [role="dialog"]')
+      .filter({ hasText: /confirm action|password-reset|one-time link/i }).first();
+    await dialog.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
+    await this.click(dialog.getByRole('button', { name: /^(yes|confirm|send)$/i }).first());
   }
 
   // ---------------------------------------------------------------------------
